@@ -89,16 +89,12 @@ public class FiniteVI {
 				beliefSet.add(bp);
 			}
 			
-			// add initial belief
-			double[] belief = new double[pomdp.getNumStates()];
-			for(int s=0; s<pomdp.getNumStates(); s++) {
-				belief[s] = pomdp.getInitialBelief().getBelief(s);
-				
-				BeliefPoint bp = new BeliefPoint(belief);
-				bp.addToHistory((s + 1) * -1);
-				beliefList.add(bp);
-				beliefSet.add(bp);
-			}
+			// Add one complete initial belief, rather than partially filled vectors.
+			double[] belief = pomdp.getInitialBelief().getBelief().clone();
+			BeliefPoint initial = new BeliefPoint(belief);
+			initial.addToHistory(-pomdp.getNumStates()-1);
+			beliefList.add(initial);
+			beliefSet.add(initial);
 			
 		}	
 		
@@ -429,7 +425,7 @@ public class FiniteVI {
 			double currentLower = AlphaVector.getValue(initialBelief.getBelief(), vectorSets.get(0));
 			double currentUpper = initialBelief.getUpperBound();
 			double currentGap = currentUpper - currentLower;
-			double allowedGap = Math.pow(10.0, Math.ceil(Math.log10(Math.max(currentLower, currentUpper))) - 3.0);
+			double allowedGap = Math.pow(10.0, Math.ceil(Math.log10(Math.max(1e-12, Math.max(Math.abs(currentLower), Math.abs(currentUpper))))) - 3.0);
 			double elapsed = (System.currentTimeMillis()-startTime) * 0.001;
 			ConsoleOutput.println(currentLower+" "+currentUpper+" (gap: "+currentGap+", allowed: "+allowedGap+", elapsed: "+elapsed+"s)");
 			
