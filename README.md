@@ -15,4 +15,11 @@ Each completed sweep saves an evaluated policy graph and a flushed `java-trace.j
 
 Changes from upstream: complete initial-belief construction, stopping thresholds for nonpositive returns, progress callbacks, fixed-iteration control, deadlines, a JSON runner, and pinned Maven build plugins. JAR timestamps are fixed for reproducible builds. The fixed-iteration reference driver is compiled under `target/test-classes` for validation only.
 
+Integration checks for the companion Python project live in `validation/`:
+
+```sh
+/path/to/project/.venv/bin/python -m pip install -r validation/requirements.txt
+/path/to/project/.venv/bin/python validation/check_integration.py /path/to/project --output /path/to/project/outputs/fivi/validation --benchmarks
+```
+
 The upstream toolbox and these changes are GPL-3.0-or-later; see [LICENSE](LICENSE).
