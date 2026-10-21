@@ -116,7 +116,7 @@ def main():
     expected = [record['policy_value'] for record in verify(result.output_dir)]
     build = root / 'build/fivi'
     output = destination / 'fork-reference.json'
-    classpath = os.pathsep.join(map(str, [build / 'reference', build / 'fivi.jar']))
+    classpath = os.pathsep.join(map(str, [build / 'source/target/test-classes', build / 'fivi.jar']))
     subprocess.run([str(build / 'jdk-21.0.5+11/bin/java'), '-ea', '-cp', classpath, 'executables.FiviReference', str(result.output_dir / 'model.json'), '4', '19', str(output)], stdout=subprocess.DEVNULL, check=True)
     report['reference']['fork'] = json.loads(output.read_text())
     np.testing.assert_allclose(report['reference']['fork'], expected, atol=1e-10)
