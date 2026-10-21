@@ -37,7 +37,12 @@ import model.POMDP;
 public class FiniteVI {
 	private final double gapTolerance = 0.0001; // during search this tolerance is used to decide whether new belief should be added
 	private double terminateTime = 3600; // if runtime exceeds the limit when performing the check, then we stop
-	private final int maxIter = 1000000;
+	private int maxIter = 1000000;
+    public interface Progress { void accept(int iteration, double lower, double upper, POMDPPolicyGraph graph); }
+    public Progress progress = null;
+    public Runnable deadlineCheck = () -> {};
+    public boolean fixedIterations = false;
+    public void setMaxIterations(int count) { maxIter = count; }
 	private boolean dumpPolicyGraph = false;
 	private Random rnd;
 	
@@ -58,7 +63,7 @@ public class FiniteVI {
 		// initialize data structures
 		beliefLists = new ArrayList<ArrayList<BeliefPoint>>();
 		beliefSets = new ArrayList<HashSet<BeliefPoint>>();
-		for(int t=0; t<=T; t++) {
+		for(int t=0; t<=T; t++) { deadlineCheck.run();
 			beliefLists.add(new ArrayList<BeliefPoint>());
 			beliefSets.add(new HashSet<BeliefPoint>());
 		}
@@ -73,11 +78,11 @@ public class FiniteVI {
 		beliefSets.get(0).add(pomdp.getInitialBelief());
 		
 		// for each timestep: add corner beliefs and initial belief
-		for(int t=0; t<=T; t++) {
+		for(int t=0; t<=T; t++) { deadlineCheck.run();
 			ArrayList<BeliefPoint> beliefList = beliefLists.get(t);
 			HashSet<BeliefPoint> beliefSet = beliefSets.get(t);
 			
-			for(int s=0; s<pomdp.getNumStates(); s++) {
+			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
 				double[] belief = new double[pomdp.getNumStates()];
 				belief[s] = 1.0;
 				
@@ -107,18 +112,18 @@ public class FiniteVI {
 		
 		AlphaVector[][][] gkao = new AlphaVector[V.size()][nActions][nObservations];
 		
-		for(int k=0; k<V.size(); k++) {
-			for(int a=0; a<nActions; a++) {
-				for(int o=0; o<nObservations; o++) {
+		for(int k=0; k<V.size(); k++) { deadlineCheck.run();
+			for(int a=0; a<nActions; a++) { deadlineCheck.run();
+				for(int o=0; o<nObservations; o++) { deadlineCheck.run();
 					double[] entries = new double[nStates];
 					
-					for(int s=0; s<nStates; s++) {
+					for(int s=0; s<nStates; s++) { deadlineCheck.run();
 						double val = 0.0;
 						
 						int[] transitionDestinations = pomdp.getTransitionDestinations(s, a);
 						double[] transitionProbabilities = pomdp.getTransitionProbabilities(s, a);
 						
-						for(int j=0; j<transitionDestinations.length; j++) {
+						for(int j=0; j<transitionDestinations.length; j++) { deadlineCheck.run();
 							int sPrime = transitionDestinations[j];
 							double prob = transitionProbabilities[j];
 							
@@ -144,14 +149,14 @@ public class FiniteVI {
 		
 		List<AlphaVector> ga = new ArrayList<AlphaVector>();
 		
-		for(int a=0; a<nActions; a++) {
+		for(int a=0; a<nActions; a++) { deadlineCheck.run();
 			List<AlphaVector> oVectors = new ArrayList<AlphaVector>();
-			for(int o=0; o<nObservations; o++) {
+			for(int o=0; o<nObservations; o++) { deadlineCheck.run();
 				double maxVal = Double.NEGATIVE_INFINITY;
 				AlphaVector maxVector = null;
 				
 				int K = gkao.length;
-				for(int k=0; k<K; k++) {
+				for(int k=0; k<K; k++) { deadlineCheck.run();
 					double product = gkao[k][a][o].getDotProduct(b.getBelief());
 					if(product > maxVal) {
 						maxVal = product;
@@ -167,7 +172,7 @@ public class FiniteVI {
 			
 			// take sum of the vectors
 			AlphaVector sumVector = oVectors.get(0);
-			for(int j=1; j<oVectors.size(); j++) {
+			for(int j=1; j<oVectors.size(); j++) { deadlineCheck.run();
 				sumVector = AlphaVector.sumVectors(sumVector, oVectors.get(j));
 			}
 			
@@ -181,7 +186,7 @@ public class FiniteVI {
 		// find the maximizing vector
 		double maxVal = Double.NEGATIVE_INFINITY;
 		AlphaVector vFinal = null;
-		for(AlphaVector av : ga) {
+		for(AlphaVector av : ga) { deadlineCheck.run();
 			double product = av.getDotProduct(b.getBelief());
 			if(product > maxVal) {
 				maxVal = product;
@@ -202,7 +207,7 @@ public class FiniteVI {
 		// precompute state upper bounds
 		double[] stateUpper = new double[nStates];
 		int nonStateBeliefs = 0;
-		for(BeliefPoint bp : Vupper) {
+		for(BeliefPoint bp : Vupper) { deadlineCheck.run();
 			if(bp.isStateBelief()) {
 				int s = bp.getState();
 				stateUpper[s] = bp.getUpperBound();
@@ -219,13 +224,13 @@ public class FiniteVI {
 		int bBarStarIndex = -1;
 		double bBarStarValue = Double.POSITIVE_INFINITY;
 		
-		for(int bBarIndex=0; bBarIndex<Vupper.size(); bBarIndex++) {
+		for(int bBarIndex=0; bBarIndex<Vupper.size(); bBarIndex++) { deadlineCheck.run();
 			BeliefPoint bBar = Vupper.get(bBarIndex);
 			if(!bBar.isStateBelief()) {
 				f[bBarIndex] = bBar.getUpperBound();
 				
 				double minC = Double.POSITIVE_INFINITY;
-				for(int s=0; s<nStates; s++) {
+				for(int s=0; s<nStates; s++) { deadlineCheck.run();
 					if(bBar.getBelief(s) > 0.0) {
 						f[bBarIndex] = f[bBarIndex] - (bBar.getBelief(s) * stateUpper[s]);
 						double curC = b.getBelief(s) / bBar.getBelief(s);
@@ -246,7 +251,7 @@ public class FiniteVI {
 		
 		// compute vStar
 		double mv = c[bBarStarIndex]*f[bBarStarIndex];
-		for(int s=0; s<nStates; s++) {
+		for(int s=0; s<nStates; s++) { deadlineCheck.run();
 			mv += b.getBelief(s) * stateUpper[s];
 		}
 		double vStar = mv;
@@ -291,17 +296,17 @@ public class FiniteVI {
 		BeliefPoint b = pomdp.getInitialBelief();
 		int numAdded = 0;
 		
-		for(int t=0; t<T-1; t++) {
+		for(int t=0; t<T-1; t++) { deadlineCheck.run();
 			pomdp.prepareBelief(b);		
 			
 			// choose action with the greatest upper bound
 			double maxVal = Double.NEGATIVE_INFINITY;
 			int maxAction = -1;
 			BeliefPoint[][] beliefs = new BeliefPoint[pomdp.getNumActions()][pomdp.getNumObservations()];
-			for(int a=0; a<pomdp.getNumActions(); a++) {
+			for(int a=0; a<pomdp.getNumActions(); a++) { deadlineCheck.run();
 				double val = immediateRewards.get(a).getDotProduct(b.getBelief());
 				
-				for(int o=0; o<pomdp.getNumObservations(); o++) {
+				for(int o=0; o<pomdp.getNumObservations(); o++) { deadlineCheck.run();
 					if(b.getActionObservationProbability(a, o) > 0.0) {
 						BeliefPoint bao = pomdp.updateBelief(b, a, o);
 						beliefs[a][o] = bao;
@@ -322,7 +327,7 @@ public class FiniteVI {
 			// choose observation for which resulting belief has the largest gap
 			double maxGap = Double.NEGATIVE_INFINITY;
 			int selectedObservation = -1;
-			for(int o=0; o<pomdp.getNumObservations(); o++) {
+			for(int o=0; o<pomdp.getNumObservations(); o++) { deadlineCheck.run();
 				if(b.getActionObservationProbability(maxAction, o) > 0.0) {
 					BeliefPoint bao = beliefs[maxAction][o];
 					assert bao != null;
@@ -375,15 +380,15 @@ public class FiniteVI {
 		
 		// initialize sets for alphavectors
 		vectorSets = new ArrayList<ArrayList<AlphaVector>>();
-		for(int t=0; t<=T; t++) {
+		for(int t=0; t<=T; t++) { deadlineCheck.run();
 			vectorSets.add(new ArrayList<AlphaVector>());
 		}
 		
 		// initialize immediate reward vectors
 		immediateRewards = new ArrayList<AlphaVector>();
-		for(int a=0; a<pomdp.getNumActions(); a++) {
+		for(int a=0; a<pomdp.getNumActions(); a++) { deadlineCheck.run();
 			double[] entries = new double[pomdp.getNumStates()];
-			for(int s=0; s<pomdp.getNumStates(); s++) {
+			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
 				entries[s] = getTransitionReward(s,a);
 			}
 			
@@ -395,7 +400,7 @@ public class FiniteVI {
 		
 		// initialize value function for t=T containing just zeros
 		ArrayList<AlphaVector> vectorSet = vectorSets.get(T);
-		for(int a=0; a<pomdp.getNumActions(); a++) {
+		for(int a=0; a<pomdp.getNumActions(); a++) { deadlineCheck.run();
 			double[] entries = new double[pomdp.getNumStates()];			
 			AlphaVector av = new AlphaVector(entries);
 			av.setAction(a);
@@ -404,7 +409,7 @@ public class FiniteVI {
 		assert vectorSets.get(T).size() == pomdp.getNumActions();
 		
 		// compute upper bound for belief points in t=T
-		for(BeliefPoint bp : beliefLists.get(T)) {
+		for(BeliefPoint bp : beliefLists.get(T)) { deadlineCheck.run();
 			bp.setUpperBound(0.0);
 		}
 		
@@ -412,9 +417,9 @@ public class FiniteVI {
 		int iter = 0;
 		double lastValueUpperBound = Double.POSITIVE_INFINITY;
 		long startTime = System.currentTimeMillis();
-		while(true) {			
+		while(true) { deadlineCheck.run();
 			// compute value function lower bound and upper bound backwards from t=T-1 to t=0
-			for(int t=T-1; t>=0; t--) {
+			for(int t=T-1; t>=0; t--) { deadlineCheck.run();
 				// randomized backup stage, upper bound updates on all points
 				backupStagePerseus(t, iter);
 				upperBoundUpdateSkip(t, beliefLists.get(t));
@@ -433,13 +438,11 @@ public class FiniteVI {
 			assert currentGap >= -0.0001 : "Gap must be positive";
 			lastValueUpperBound = currentUpper;
 			
-			// check for convergence of the algorithm
+			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper, computePolicyGraph());
+            // check for convergence of the algorithm
 			iter++;
 			double elapsedTime = (System.currentTimeMillis()-startTime) * 0.001;
-			if(iter > maxIter 
-					|| elapsedTime > terminateTime 
-					|| currentGap < allowedGap
-					|| Math.abs(currentGap) < 0.01) {
+			if(iter >= maxIter || elapsedTime > terminateTime || (!fixedIterations && (currentGap < allowedGap || Math.abs(currentGap) < 0.01))) {
 				break;
 			}
 			
@@ -474,7 +477,7 @@ public class FiniteVI {
 			ArrayList<AlphaVector> vectorSet = vectorSets.get(t);
 			vectorSet.clear();
 			
-			for(int i=0; i<beliefLists.get(t).size(); i++) {
+			for(int i=0; i<beliefLists.get(t).size(); i++) { deadlineCheck.run();
 				BeliefPoint b = beliefLists.get(t).get(i);
 				
 				// perform the backup (or take a vector from cache)
@@ -490,7 +493,7 @@ public class FiniteVI {
 			ArrayList<BeliefPoint> Btilde = new ArrayList<BeliefPoint>(beliefLists.get(t));
 			ArrayList<AlphaVector> newVectorSet = new ArrayList<AlphaVector>();
 			
-			while(Btilde.size() > 0) {
+			while(Btilde.size() > 0) { deadlineCheck.run();
 				// sample belief and compute backup
 				BeliefPoint sampledPoint = Btilde.get(rnd.nextInt(Btilde.size()));
 				AlphaVector backupVector = backup(gkao,sampledPoint);
@@ -509,7 +512,7 @@ public class FiniteVI {
 				
 				// compute new Btilde
 				ArrayList<BeliefPoint> newBtilde = new ArrayList<BeliefPoint>();
-				for(BeliefPoint bp : Btilde) {
+				for(BeliefPoint bp : Btilde) { deadlineCheck.run();
 					double nValue = AlphaVector.getValue(bp.getBelief(), newVectorSet);
 					double oValue = AlphaVector.getValue(bp.getBelief(), vectorSet);
 					
@@ -533,7 +536,7 @@ public class FiniteVI {
 	 */
 	private void upperBoundUpdateSkip(int t, ArrayList<BeliefPoint> boundUpdateList) {
 		// update the upper bound for all belief points
-		for(BeliefPoint b : boundUpdateList) {
+		for(BeliefPoint b : boundUpdateList) { deadlineCheck.run();
 			pomdp.prepareBelief(b);
 			
 			if(b.isUpperBoundTight()) {
@@ -545,10 +548,10 @@ public class FiniteVI {
 			
 			// compute new upper bound
 			double upperBound = Double.NEGATIVE_INFINITY;
-			for(int a=0; a<pomdp.getNumActions(); a++) {
+			for(int a=0; a<pomdp.getNumActions(); a++) { deadlineCheck.run();
 				double val = immediateRewards.get(a).getDotProduct(b.getBelief());
 				
-				for(int o=0; o<pomdp.getNumObservations(); o++) {
+				for(int o=0; o<pomdp.getNumObservations(); o++) { deadlineCheck.run();
 					if(b.getActionObservationProbability(a, o) > 0.0) {
 						// either obtain belief from the array, or compute the new one.
 						BeliefPoint bao = beliefTransitionMap[a][o] == null ? pomdp.updateBelief(b, a, o) : beliefTransitionMap[a][o];
@@ -598,7 +601,7 @@ public class FiniteVI {
 		ArrayList<int[]> layerNodeActions = new ArrayList<int[]>();
 		ArrayList<BeliefPoint[]> layerNodeBeliefs = new ArrayList<BeliefPoint[]>();
 		ArrayList<int[][]> layerTransitions = new ArrayList<int[][]>();
-		for(int t=0; t<=T; t++) {
+		for(int t=0; t<=T; t++) { deadlineCheck.run();
 			ArrayList<AlphaVector> vectors = vectorSets.get(t);
 			layerNodeCount[t] = vectors.size();
 			
@@ -607,7 +610,7 @@ public class FiniteVI {
 			int[][] transitions = new int[vectors.size()][pomdp.getNumObservations()];
 			
 			if(t < T) {
-				for(int q=0; q<vectors.size(); q++) {
+				for(int q=0; q<vectors.size(); q++) { deadlineCheck.run();
 					// determine the action to be executed in node q at time t
 					AlphaVector av = vectors.get(q);
 					assert av.hasBeliefPoint();
@@ -621,7 +624,7 @@ public class FiniteVI {
 					// based on the vectors of time t+1, we determine the transitions to the next layer
 					ArrayList<AlphaVector> nextVectors = vectorSets.get(t+1);
 					
-					for(int o=0; o<pomdp.getNumObservations(); o++) {
+					for(int o=0; o<pomdp.getNumObservations(); o++) { deadlineCheck.run();
 						if(b.getActionObservationProbability(a, o) > 0.0) {
 							BeliefPoint bao = pomdp.updateBelief(b, a, o);
 							int nextIndex = AlphaVector.getBestVectorIndex(bao.getBelief(), nextVectors);
@@ -646,6 +649,7 @@ public class FiniteVI {
 		
 		// evaluate policy graph
 		PolicyGraphEvaluatorFinite eval = new PolicyGraphEvaluatorFinite(pomdp, pg);
+		eval.deadlineCheck = deadlineCheck;
 		eval.evaluate(lambda);
 		
 		pg.setExpectedValue(eval.getExpectedValue());
@@ -664,7 +668,7 @@ public class FiniteVI {
 		int[] layerNodeCount = new int[numLayers];
 		ArrayList<int[]> layerNodeActions = new ArrayList<int[]>();
 		ArrayList<int[][]> layerTransitions = new ArrayList<int[][]>();
-		for(int t=0; t<=T; t++) {
+		for(int t=0; t<=T; t++) { deadlineCheck.run();
 			layerNodeCount[t] = 1;
 			
 			int[] actions = new int[1];
@@ -672,7 +676,7 @@ public class FiniteVI {
 			
 			if(t < T) {
 				actions[0] = a;
-				for(int o=0; o<pomdp.getNumObservations(); o++) {
+				for(int o=0; o<pomdp.getNumObservations(); o++) { deadlineCheck.run();
 					transitions[0][o] = 0;
 				}
 			}
@@ -687,6 +691,7 @@ public class FiniteVI {
 		
 		// evaluate policy graph
 		PolicyGraphEvaluatorFinite eval = new PolicyGraphEvaluatorFinite(pomdp, pg);
+		eval.deadlineCheck = deadlineCheck;
 		eval.evaluate(lambda);
 		
 		pg.setExpectedValue(eval.getExpectedValue());
