@@ -57,6 +57,9 @@ public class FiviCheckpointRunner {
                 for (int next=0, i=0; next<states; next++) if (row[next] != 0.0) { destinations[s][a][i] = next; probabilities[s][a][i++] = row[next]; }
             }
             model.setTransitionFunction(destinations, probabilities);
+            long successors = 0;
+            for (int s=0; s<states; s++) for (int a=0; a<actions; a++) successors += destinations[s][a].length;
+            emit("loaded", Map.of("states", states, "actions", actions, "successors", successors, "transition_storage", "sparse successor lists"));
             state.solver = new FiniteVI(new Random(Long.parseLong(args[4])));
             // Initialize through solve below, retaining the exact sparse model in the snapshot.
             initialModel = model;
