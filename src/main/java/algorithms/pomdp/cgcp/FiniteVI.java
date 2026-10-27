@@ -34,13 +34,17 @@ import model.BeliefPoint;
 import model.CPOMDP;
 import model.POMDP;
 
-public class FiniteVI {
+public class FiniteVI implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
+    public int completedIterations = 0;
+    public boolean initialized = false, finished = false;
+    public transient Runnable boundary = () -> {};
 	private final double gapTolerance = 0.0001; // during search this tolerance is used to decide whether new belief should be added
 	private double terminateTime = 3600; // if runtime exceeds the limit when performing the check, then we stop
 	private int maxIter = 1000000;
     public interface Progress { void accept(int iteration, double lower, double upper, POMDPPolicyGraph graph); }
-    public Progress progress = null;
-    public Runnable deadlineCheck = () -> {};
+    public transient Progress progress = null;
+    public transient Runnable deadlineCheck = () -> {};
     public boolean fixedIterations = false;
     public void setMaxIterations(int count) { maxIter = count; }
 	private boolean dumpPolicyGraph = false;
@@ -371,6 +375,7 @@ public class FiniteVI {
 	}
 	
 	private POMDPAgentSolutionPolicyBased solveModel(POMDP pomdp, int T, double lambda) {
+		if (!initialized) {
 		this.pomdp = pomdp;
 		this.T = T;
 		this.lambda = lambda;
@@ -413,11 +418,13 @@ public class FiniteVI {
 			bp.setUpperBound(0.0);
 		}
 		
+		initialized = true;
+        } else { pomdp = this.pomdp; }
 		// run value iteration
-		int iter = 0;
+		int iter = completedIterations;
 		double lastValueUpperBound = Double.POSITIVE_INFINITY;
 		long startTime = System.currentTimeMillis();
-		while(true) { deadlineCheck.run();
+		while(!finished) { deadlineCheck.run();
 			// compute value function lower bound and upper bound backwards from t=T-1 to t=0
 			for(int t=T-1; t>=0; t--) { deadlineCheck.run();
 				// randomized backup stage, upper bound updates on all points
@@ -441,13 +448,17 @@ public class FiniteVI {
 			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper, computePolicyGraph());
             // check for convergence of the algorithm
 			iter++;
+            completedIterations = iter;
 			double elapsedTime = (System.currentTimeMillis()-startTime) * 0.001;
 			if(iter >= maxIter || elapsedTime > terminateTime || (!fixedIterations && (currentGap < allowedGap || Math.abs(currentGap) < 0.01))) {
+				finished = true;
+                boundary.run();
 				break;
 			}
 			
 			// find new beliefs before starting the next iteration
 			findNewBeliefs();
+            boundary.run();
 		}
 		
 		// return policy represented by vectors, or create a graph		
