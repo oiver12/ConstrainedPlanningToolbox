@@ -78,7 +78,7 @@ public class FiviCheckpointRunner {
             row.put("value", graph.getExpectedReward()); row.put("java_cpu", cpu());
             if (graph.getExpectedReward() > snapshot.best) {
                 snapshot.best = graph.getExpectedReward();
-                row.put("graph", Map.of("actions", graph.getLayerNodeActions(), "transitions", graph.getLayerTransitions(), "start_node", graph.getStartNode(), "horizon", graph.getLayerTransitions().size()));
+                row.put("graph", Map.of("actions", graph.getLayerNodeActions(), "transitions", graph.getLayerTransitions(), "start_node", graph.getStartNode(), "horizon", graph.getLayerTransitions().size()-1));
             }
             emit("bound", row);
         };
