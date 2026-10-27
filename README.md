@@ -13,7 +13,7 @@ Only zero terminal value is supported; represent early termination by an absorbi
 
 Each completed sweep saves an evaluated policy graph and a flushed `java-trace.jsonl` record. A cooperative deadline preserves earlier checkpoints. The caller must enforce an external process limit and account for startup and export time.
 
-Changes from upstream: complete initial-belief construction, stopping thresholds for nonpositive returns, progress callbacks, fixed-iteration control, deadlines, a JSON runner, and pinned Maven build plugins. JAR timestamps are fixed for reproducible builds. The fixed-iteration reference driver is compiled under `target/test-classes` for validation only.
+Changes from upstream: complete initial-belief construction, stopping thresholds for nonpositive returns, progress callbacks, fixed-iteration control, deadlines checked outside the inner loops over states and successors, a JSON runner that passes only nonzero transitions, and pinned Maven build plugins. JAR timestamps are fixed for reproducible builds. The fixed-iteration reference driver is compiled under `target/test-classes` for validation only.
 
 Integration checks for the companion Python project live in `validation/`:
 

@@ -64,18 +64,18 @@ public class PolicyGraphEvaluatorFinite {
 				
 				for(int q=0; q<layerNodeCount[t]; q++) { deadlineCheck.run();
 					int a = layerNodeActions.get(t)[q];
-					for(int s=0; s<pomdp.getNumStates(); s++){ deadlineCheck.run();
+					for(int s=0; s<pomdp.getNumStates(); s++){
 						VvalueNext[q][s] = pomdp.getReward(s, a) - lambda * cpomdp.getCost(0, s, a);
 						VrewardNext[q][s] = pomdp.getReward(s, a);
 						VcostNext[q][s] = cpomdp.getCost(0, s, a);
 						
-						for(int o=0; o<pomdp.getNumObservations(); o++) { deadlineCheck.run();
+						for(int o=0; o<pomdp.getNumObservations(); o++) {
 							int qNext = layerTransitions.get(t)[q][o];
 							
 							int[] transitionDestinations = pomdp.getTransitionDestinations(s, a);
 							double[] transitionProbabilities = pomdp.getTransitionProbabilities(s, a);
 							
-							for(int j=0; j<transitionDestinations.length; j++) { deadlineCheck.run();
+							for(int j=0; j<transitionDestinations.length; j++) {
 								int sNext = transitionDestinations[j];
 								double prob = transitionProbabilities[j];
 								
@@ -96,7 +96,7 @@ public class PolicyGraphEvaluatorFinite {
 			expectedValue = 0.0;
 			expectedReward = 0.0;
 			expectedCost = 0.0;
-			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
+			for(int s=0; s<pomdp.getNumStates(); s++) {
 				expectedValue += Vvalue[startNode][s] * pomdp.getInitialBelief().getBelief(s);
 				expectedReward += Vreward[startNode][s] * pomdp.getInitialBelief().getBelief(s);
 				expectedCost += Vcost[startNode][s] * pomdp.getInitialBelief().getBelief(s);
@@ -111,16 +111,16 @@ public class PolicyGraphEvaluatorFinite {
 				double[][] Vnext = new double[layerNodeCount[t]][pomdp.getNumStates()];
 				for(int q=0; q<layerNodeCount[t]; q++) { deadlineCheck.run();
 					int a = layerNodeActions.get(t)[q];
-					for(int s=0; s<pomdp.getNumStates(); s++){ deadlineCheck.run();
+					for(int s=0; s<pomdp.getNumStates(); s++){
 						Vnext[q][s] = pomdp.getReward(s, a);
 						
-						for(int o=0; o<pomdp.getNumObservations(); o++) { deadlineCheck.run();
+						for(int o=0; o<pomdp.getNumObservations(); o++) {
 							int qNext = layerTransitions.get(t)[q][o];
 							
 							int[] transitionDestinations = pomdp.getTransitionDestinations(s, a);
 							double[] transitionProbabilities = pomdp.getTransitionProbabilities(s, a);
 							
-							for(int j=0; j<transitionDestinations.length; j++) { deadlineCheck.run();
+							for(int j=0; j<transitionDestinations.length; j++) {
 								int sNext = transitionDestinations[j];
 								double prob = transitionProbabilities[j];
 							
@@ -134,7 +134,7 @@ public class PolicyGraphEvaluatorFinite {
 			}
 			
 			expectedReward = 0.0;
-			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
+			for(int s=0; s<pomdp.getNumStates(); s++) {
 				expectedReward += V[startNode][s] * pomdp.getInitialBelief().getBelief(s);
 			}
 			expectedValue = expectedReward;

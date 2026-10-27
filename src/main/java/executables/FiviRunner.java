@@ -36,11 +36,19 @@ public class FiviRunner {
         int states = input.initial_belief.length, actions = input.transition.length;
         POMDP model = new POMDP(states, actions, input.observation[0][0].length, input.observation, new BeliefPoint(input.initial_belief), input.horizon);
         model.setRewardFunction(input.reward);
-        int[][][] destinations = new int[states][actions][states];
-        double[][][] probabilities = new double[states][actions][states];
-        for (int s=0; s<states; s++) for (int a=0; a<actions; a++) for (int next=0; next<states; next++) {
-            destinations[s][a][next] = next;
-            probabilities[s][a][next] = input.transition[a][s][next];
+        // Sparse successor lists: the solver loops only over listed destinations.
+        int[][][] destinations = new int[states][actions][];
+        double[][][] probabilities = new double[states][actions][];
+        for (int s=0; s<states; s++) for (int a=0; a<actions; a++) {
+            double[] row = input.transition[a][s];
+            int count = 0;
+            for (double p : row) if (p != 0.0) count++;
+            destinations[s][a] = new int[count];
+            probabilities[s][a] = new double[count];
+            for (int next=0, i=0; next<states; next++) if (row[next] != 0.0) {
+                destinations[s][a][i] = next;
+                probabilities[s][a][i++] = row[next];
+            }
         }
         model.setTransitionFunction(destinations, probabilities);
         FiniteVI solver = new FiniteVI(new Random(Long.parseLong(args[3])));

@@ -82,7 +82,7 @@ public class FiniteVI {
 			ArrayList<BeliefPoint> beliefList = beliefLists.get(t);
 			HashSet<BeliefPoint> beliefSet = beliefSets.get(t);
 			
-			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
+			for(int s=0; s<pomdp.getNumStates(); s++) {
 				double[] belief = new double[pomdp.getNumStates()];
 				belief[s] = 1.0;
 				
@@ -117,13 +117,13 @@ public class FiniteVI {
 				for(int o=0; o<nObservations; o++) { deadlineCheck.run();
 					double[] entries = new double[nStates];
 					
-					for(int s=0; s<nStates; s++) { deadlineCheck.run();
+					for(int s=0; s<nStates; s++) {
 						double val = 0.0;
 						
 						int[] transitionDestinations = pomdp.getTransitionDestinations(s, a);
 						double[] transitionProbabilities = pomdp.getTransitionProbabilities(s, a);
 						
-						for(int j=0; j<transitionDestinations.length; j++) { deadlineCheck.run();
+						for(int j=0; j<transitionDestinations.length; j++) {
 							int sPrime = transitionDestinations[j];
 							double prob = transitionProbabilities[j];
 							
@@ -230,7 +230,7 @@ public class FiniteVI {
 				f[bBarIndex] = bBar.getUpperBound();
 				
 				double minC = Double.POSITIVE_INFINITY;
-				for(int s=0; s<nStates; s++) { deadlineCheck.run();
+				for(int s=0; s<nStates; s++) {
 					if(bBar.getBelief(s) > 0.0) {
 						f[bBarIndex] = f[bBarIndex] - (bBar.getBelief(s) * stateUpper[s]);
 						double curC = b.getBelief(s) / bBar.getBelief(s);
@@ -251,7 +251,7 @@ public class FiniteVI {
 		
 		// compute vStar
 		double mv = c[bBarStarIndex]*f[bBarStarIndex];
-		for(int s=0; s<nStates; s++) { deadlineCheck.run();
+		for(int s=0; s<nStates; s++) {
 			mv += b.getBelief(s) * stateUpper[s];
 		}
 		double vStar = mv;
@@ -388,7 +388,7 @@ public class FiniteVI {
 		immediateRewards = new ArrayList<AlphaVector>();
 		for(int a=0; a<pomdp.getNumActions(); a++) { deadlineCheck.run();
 			double[] entries = new double[pomdp.getNumStates()];
-			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
+			for(int s=0; s<pomdp.getNumStates(); s++) {
 				entries[s] = getTransitionReward(s,a);
 			}
 			
