@@ -29,9 +29,15 @@ public class FiviCheckpointRunner {
         message.put("kind", kind); message.put("value", value);
         System.out.println(gson.toJson(message)); System.out.flush();
     }
+    static class FastGzip extends GZIPOutputStream {
+        FastGzip(OutputStream output) throws IOException {
+            super(output);
+            def.setLevel(Deflater.BEST_SPEED);
+        }
+    }
     static void save(Path path, Snapshot snapshot) throws IOException {
         Path temporary = path.resolveSibling("checkpoint.tmp");
-        try (FileOutputStream file = new FileOutputStream(temporary.toFile()); GZIPOutputStream zip = new GZIPOutputStream(file); ObjectOutputStream stream = new ObjectOutputStream(zip)) {
+        try (FileOutputStream file = new FileOutputStream(temporary.toFile()); GZIPOutputStream zip = new FastGzip(file); ObjectOutputStream stream = new ObjectOutputStream(zip)) {
             stream.writeObject(snapshot); stream.flush(); zip.finish(); file.getFD().sync();
         }
         Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
