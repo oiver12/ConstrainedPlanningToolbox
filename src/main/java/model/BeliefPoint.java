@@ -25,6 +25,17 @@ import java.util.List;
 public class BeliefPoint implements Serializable {
 	private static final long serialVersionUID = 1L;
 
+    private void readObject(java.io.ObjectInputStream stream) throws java.io.IOException, ClassNotFoundException {
+        stream.defaultReadObject();
+        // Legacy equals compares boxed history entries by identity. Restore Java's
+        // cached small integers so new histories compare exactly as before saving.
+        for (int i=0; i<history.size(); i++) {
+            int value = history.get(i);
+            if (value >= -128 && value <= 127) history.set(i, Integer.valueOf(value));
+        }
+    }
+
+
 	private double[] belief;
 	
 	private boolean actionObservationProbInitialized = false;

@@ -22,6 +22,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ForkJoinPool;
+import java.util.function.IntConsumer;
+import java.util.stream.IntStream;
 
 
 import solutions.pomdp.POMDPAgentSolutionPolicyBased;
@@ -34,15 +37,51 @@ import model.BeliefPoint;
 import model.CPOMDP;
 import model.POMDP;
 
-public class FiniteVI {
+public class FiniteVI implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
+    public int completedIterations = 0;
+    public boolean initialized = false, finished = false;
+    public transient Runnable boundary = () -> {};
 	private final double gapTolerance = 0.0001; // during search this tolerance is used to decide whether new belief should be added
 	private double terminateTime = 3600; // if runtime exceeds the limit when performing the check, then we stop
 	private int maxIter = 1000000;
     public interface Progress { void accept(int iteration, double lower, double upper, POMDPPolicyGraph graph); }
-    public Progress progress = null;
-    public Runnable deadlineCheck = () -> {};
+    public transient Progress progress = null;
+    public transient Runnable deadlineCheck = () -> {};
     public boolean fixedIterations = false;
+    private double[] phaseCpu = new double[4];
+    private static final boolean profilePhases = Boolean.getBoolean("fivi.profile.phases");
+    private static final com.sun.management.OperatingSystemMXBean cpuBean = profilePhases ? (com.sun.management.OperatingSystemMXBean)java.lang.management.ManagementFactory.getOperatingSystemMXBean() : null;
+    private static double phaseClock() { return cpuBean.getProcessCpuTime()*1e-9; }
+    public java.util.Map<String,Double> getPhaseCpu() {
+        if (!profilePhases) return java.util.Collections.emptyMap();
+        return java.util.Map.of("backups", phaseCpu[0], "upper_bounds", phaseCpu[1], "belief_expansion", phaseCpu[2], "graph_extraction_and_evaluation", phaseCpu[3]);
+    }
+    private void timedPhase(int index, Runnable operation) {
+        if (!profilePhases) { operation.run(); return; }
+        double before = phaseClock();
+        try { operation.run(); } finally { phaseCpu[index] += phaseClock()-before; }
+    }
+    private POMDPPolicyGraph timedGraph() {
+        if (!profilePhases) return computePolicyGraph();
+        double before = phaseClock();
+        try { return computePolicyGraph(); } finally { phaseCpu[3] += phaseClock()-before; }
+    }
     public void setMaxIterations(int count) { maxIter = count; }
+    private transient ForkJoinPool parallelPool;
+    public void setParallelism(int workers) {
+        if (workers < 1) throw new IllegalArgumentException("workers must be positive");
+        if (parallelPool != null) parallelPool.shutdown();
+        parallelPool = workers == 1 ? null : new ForkJoinPool(workers);
+        if (phaseCpu == null) phaseCpu = new double[4];
+    }
+    private void independentIndices(int count, IntConsumer operation) {
+        if (parallelPool == null) {
+            for (int i=0; i<count; i++) operation.accept(i);
+        } else {
+            parallelPool.submit(() -> IntStream.range(0, count).parallel().forEach(operation)).join();
+        }
+    }
 	private boolean dumpPolicyGraph = false;
 	private Random rnd;
 	
@@ -82,7 +121,7 @@ public class FiniteVI {
 			ArrayList<BeliefPoint> beliefList = beliefLists.get(t);
 			HashSet<BeliefPoint> beliefSet = beliefSets.get(t);
 			
-			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
+			for(int s=0; s<pomdp.getNumStates(); s++) {
 				double[] belief = new double[pomdp.getNumStates()];
 				belief[s] = 1.0;
 				
@@ -112,18 +151,18 @@ public class FiniteVI {
 		
 		AlphaVector[][][] gkao = new AlphaVector[V.size()][nActions][nObservations];
 		
-		for(int k=0; k<V.size(); k++) { deadlineCheck.run();
+		independentIndices(V.size(), k -> { deadlineCheck.run();
 			for(int a=0; a<nActions; a++) { deadlineCheck.run();
 				for(int o=0; o<nObservations; o++) { deadlineCheck.run();
 					double[] entries = new double[nStates];
 					
-					for(int s=0; s<nStates; s++) { deadlineCheck.run();
+					for(int s=0; s<nStates; s++) {
 						double val = 0.0;
 						
 						int[] transitionDestinations = pomdp.getTransitionDestinations(s, a);
 						double[] transitionProbabilities = pomdp.getTransitionProbabilities(s, a);
 						
-						for(int j=0; j<transitionDestinations.length; j++) { deadlineCheck.run();
+						for(int j=0; j<transitionDestinations.length; j++) {
 							int sPrime = transitionDestinations[j];
 							double prob = transitionProbabilities[j];
 							
@@ -138,7 +177,7 @@ public class FiniteVI {
 					gkao[k][a][o] = av;
 				}
 			}
-		}
+		});
 		
 		return gkao;
 	}
@@ -230,7 +269,7 @@ public class FiniteVI {
 				f[bBarIndex] = bBar.getUpperBound();
 				
 				double minC = Double.POSITIVE_INFINITY;
-				for(int s=0; s<nStates; s++) { deadlineCheck.run();
+				for(int s=0; s<nStates; s++) {
 					if(bBar.getBelief(s) > 0.0) {
 						f[bBarIndex] = f[bBarIndex] - (bBar.getBelief(s) * stateUpper[s]);
 						double curC = b.getBelief(s) / bBar.getBelief(s);
@@ -251,7 +290,7 @@ public class FiniteVI {
 		
 		// compute vStar
 		double mv = c[bBarStarIndex]*f[bBarStarIndex];
-		for(int s=0; s<nStates; s++) { deadlineCheck.run();
+		for(int s=0; s<nStates; s++) {
 			mv += b.getBelief(s) * stateUpper[s];
 		}
 		double vStar = mv;
@@ -371,6 +410,7 @@ public class FiniteVI {
 	}
 	
 	private POMDPAgentSolutionPolicyBased solveModel(POMDP pomdp, int T, double lambda) {
+		if (!initialized) {
 		this.pomdp = pomdp;
 		this.T = T;
 		this.lambda = lambda;
@@ -388,7 +428,7 @@ public class FiniteVI {
 		immediateRewards = new ArrayList<AlphaVector>();
 		for(int a=0; a<pomdp.getNumActions(); a++) { deadlineCheck.run();
 			double[] entries = new double[pomdp.getNumStates()];
-			for(int s=0; s<pomdp.getNumStates(); s++) { deadlineCheck.run();
+			for(int s=0; s<pomdp.getNumStates(); s++) {
 				entries[s] = getTransitionReward(s,a);
 			}
 			
@@ -413,16 +453,19 @@ public class FiniteVI {
 			bp.setUpperBound(0.0);
 		}
 		
+		initialized = true;
+        } else { pomdp = this.pomdp; }
 		// run value iteration
-		int iter = 0;
+		int iter = completedIterations;
 		double lastValueUpperBound = Double.POSITIVE_INFINITY;
 		long startTime = System.currentTimeMillis();
-		while(true) { deadlineCheck.run();
+		while(!finished) { deadlineCheck.run();
 			// compute value function lower bound and upper bound backwards from t=T-1 to t=0
 			for(int t=T-1; t>=0; t--) { deadlineCheck.run();
 				// randomized backup stage, upper bound updates on all points
-				backupStagePerseus(t, iter);
-				upperBoundUpdateSkip(t, beliefLists.get(t));
+                final int stage = t, iteration = iter;
+                timedPhase(0, () -> backupStagePerseus(stage, iteration));
+                timedPhase(1, () -> upperBoundUpdateSkip(stage, beliefLists.get(stage)));
 			}
 			
 			// print information about current solution
@@ -438,16 +481,20 @@ public class FiniteVI {
 			assert currentGap >= -0.0001 : "Gap must be positive";
 			lastValueUpperBound = currentUpper;
 			
-			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper, computePolicyGraph());
+			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper, timedGraph());
             // check for convergence of the algorithm
 			iter++;
+            completedIterations = iter;
 			double elapsedTime = (System.currentTimeMillis()-startTime) * 0.001;
 			if(iter >= maxIter || elapsedTime > terminateTime || (!fixedIterations && (currentGap < allowedGap || Math.abs(currentGap) < 0.01))) {
+				finished = true;
+                boundary.run();
 				break;
 			}
 			
 			// find new beliefs before starting the next iteration
-			findNewBeliefs();
+            timedPhase(2, () -> findNewBeliefs());
+            boundary.run();
 		}
 		
 		// return policy represented by vectors, or create a graph		
@@ -476,16 +523,15 @@ public class FiniteVI {
 		if(iter == 0) {
 			ArrayList<AlphaVector> vectorSet = vectorSets.get(t);
 			vectorSet.clear();
-			
-			for(int i=0; i<beliefLists.get(t).size(); i++) { deadlineCheck.run();
-				BeliefPoint b = beliefLists.get(t).get(i);
-				
-				// perform the backup (or take a vector from cache)
-				AlphaVector backupVector = backup(gkao, b);
-				
-				// add vector to the list for this timestep
-				vectorSet.add(backupVector);
-			}
+			// Each first-pass belief backup is independent. Write by index and
+			// append in the original order to preserve ties, RNG and reductions.
+            ArrayList<BeliefPoint> beliefs = beliefLists.get(t);
+            AlphaVector[] backups = new AlphaVector[beliefs.size()];
+            independentIndices(backups.length, i -> {
+                deadlineCheck.run();
+                backups[i] = backup(gkao, beliefs.get(i));
+            });
+            for (AlphaVector vector : backups) vectorSet.add(vector);
 		}
 		else {
 			// perseus-like backup stage

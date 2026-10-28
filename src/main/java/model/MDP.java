@@ -19,7 +19,8 @@
 package model;
 
 
-public class MDP {
+public class MDP implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
 	private int nStates;
 	private int nActions;
 	private int initialState;
