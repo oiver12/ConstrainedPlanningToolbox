@@ -114,7 +114,7 @@ def main():
     benchmark = load_benchmark('tiger')
     result = solve_fivi(benchmark.model, benchmark.horizon, 10, seed=19, output_dir=destination / 'reference-instrumented', max_iterations=4)
     expected = [record['policy_value'] for record in verify(result.output_dir)]
-    build = root / 'build/fivi'
+    build = root / 'build/fivi-sparse-paper'
     output = destination / 'fork-reference.json'
     classpath = os.pathsep.join(map(str, [build / 'source/target/test-classes', build / 'fivi.jar']))
     subprocess.run([str(build / 'jdk-21.0.5+11/bin/java'), '-ea', '-cp', classpath, 'executables.FiviReference', str(result.output_dir / 'model.json'), '4', '19', str(output)], stdout=subprocess.DEVNULL, check=True)

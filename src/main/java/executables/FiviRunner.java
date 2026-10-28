@@ -60,7 +60,15 @@ public class FiviRunner {
         FiniteVI solver = new FiniteVI(new Random(Long.parseLong(args[3])));
         solver.setTerminateTime(Double.POSITIVE_INFINITY);
         if (iterations > 0) { solver.setMaxIterations(iterations); solver.fixedIterations = true; }
-        solver.deadlineCheck = () -> { if ((System.nanoTime()-start)*1e-9 >= budget) throw new CancellationException(); };
+        java.util.concurrent.atomic.AtomicBoolean expired = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread budgetMonitor = new Thread(() -> {
+            while (!expired.get()) {
+                if ((System.nanoTime()-start)*1e-9 >= budget) { expired.set(true); return; }
+                try { Thread.sleep(100); } catch (InterruptedException stop) { return; }
+            }
+        }, "fivi-wall-budget-monitor");
+        budgetMonitor.setDaemon(true); budgetMonitor.start();
+        solver.deadlineCheck = () -> { if (expired.get()) throw new CancellationException(); };
         final double[] best = {Double.NEGATIVE_INFINITY};
         try (FileOutputStream stream = new FileOutputStream(output.resolve("java-trace.jsonl").toFile())) {
             solver.progress = (iteration, lower, upper, graph) -> {
