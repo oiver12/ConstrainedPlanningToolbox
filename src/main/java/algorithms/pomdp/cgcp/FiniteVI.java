@@ -49,12 +49,31 @@ public class FiniteVI implements java.io.Serializable {
     public transient Progress progress = null;
     public transient Runnable deadlineCheck = () -> {};
     public boolean fixedIterations = false;
+    private double[] phaseCpu = new double[4];
+    private static final boolean profilePhases = Boolean.getBoolean("fivi.profile.phases");
+    private static final com.sun.management.OperatingSystemMXBean cpuBean = profilePhases ? (com.sun.management.OperatingSystemMXBean)java.lang.management.ManagementFactory.getOperatingSystemMXBean() : null;
+    private static double phaseClock() { return cpuBean.getProcessCpuTime()*1e-9; }
+    public java.util.Map<String,Double> getPhaseCpu() {
+        if (!profilePhases) return java.util.Collections.emptyMap();
+        return java.util.Map.of("backups", phaseCpu[0], "upper_bounds", phaseCpu[1], "belief_expansion", phaseCpu[2], "graph_extraction_and_evaluation", phaseCpu[3]);
+    }
+    private void timedPhase(int index, Runnable operation) {
+        if (!profilePhases) { operation.run(); return; }
+        double before = phaseClock();
+        try { operation.run(); } finally { phaseCpu[index] += phaseClock()-before; }
+    }
+    private POMDPPolicyGraph timedGraph() {
+        if (!profilePhases) return computePolicyGraph();
+        double before = phaseClock();
+        try { return computePolicyGraph(); } finally { phaseCpu[3] += phaseClock()-before; }
+    }
     public void setMaxIterations(int count) { maxIter = count; }
     private transient ForkJoinPool parallelPool;
     public void setParallelism(int workers) {
         if (workers < 1) throw new IllegalArgumentException("workers must be positive");
         if (parallelPool != null) parallelPool.shutdown();
         parallelPool = workers == 1 ? null : new ForkJoinPool(workers);
+        if (phaseCpu == null) phaseCpu = new double[4];
     }
     private void independentIndices(int count, IntConsumer operation) {
         if (parallelPool == null) {
@@ -444,8 +463,9 @@ public class FiniteVI implements java.io.Serializable {
 			// compute value function lower bound and upper bound backwards from t=T-1 to t=0
 			for(int t=T-1; t>=0; t--) { deadlineCheck.run();
 				// randomized backup stage, upper bound updates on all points
-				backupStagePerseus(t, iter);
-				upperBoundUpdateSkip(t, beliefLists.get(t));
+                final int stage = t, iteration = iter;
+                timedPhase(0, () -> backupStagePerseus(stage, iteration));
+                timedPhase(1, () -> upperBoundUpdateSkip(stage, beliefLists.get(stage)));
 			}
 			
 			// print information about current solution
@@ -461,7 +481,7 @@ public class FiniteVI implements java.io.Serializable {
 			assert currentGap >= -0.0001 : "Gap must be positive";
 			lastValueUpperBound = currentUpper;
 			
-			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper, computePolicyGraph());
+			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper, timedGraph());
             // check for convergence of the algorithm
 			iter++;
             completedIterations = iter;
@@ -473,7 +493,7 @@ public class FiniteVI implements java.io.Serializable {
 			}
 			
 			// find new beliefs before starting the next iteration
-			findNewBeliefs();
+            timedPhase(2, () -> findNewBeliefs());
             boundary.run();
 		}
 		

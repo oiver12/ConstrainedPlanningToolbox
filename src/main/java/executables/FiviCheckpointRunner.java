@@ -20,6 +20,7 @@ public class FiviCheckpointRunner {
         FiniteVI solver;
         double charged, best = -Double.MAX_VALUE;
         double wall;
+        double checkpointCpu;
         int chunks;
         String identity;
     }
@@ -50,15 +51,18 @@ public class FiviCheckpointRunner {
         } else {
             state = new Snapshot(); state.identity = identity;
             FiviRunner.Input input = gson.fromJson(new String(Files.readAllBytes(Paths.get(args[0]))), FiviRunner.Input.class);
-            int states = input.initial_belief.length, actions = input.transition.length;
+            int states = input.initial_belief.length, actions = input.observation.length;
             POMDP model = new POMDP(states, actions, input.observation[0][0].length, input.observation, new BeliefPoint(input.initial_belief), input.horizon);
             model.setRewardFunction(input.reward);
-            int[][][] destinations = new int[states][actions][]; double[][][] probabilities = new double[states][actions][];
+            int[][][] destinations = input.transition_destinations; double[][][] probabilities = input.transition_probabilities;
+            if (destinations == null) {
+            destinations = new int[states][actions][]; probabilities = new double[states][actions][];
             for (int s=0; s<states; s++) for (int a=0; a<actions; a++) {
                 double[] row = input.transition[a][s]; int count = 0;
                 for (double p : row) if (p != 0.0) count++;
                 destinations[s][a] = new int[count]; probabilities[s][a] = new double[count];
                 for (int next=0, i=0; next<states; next++) if (row[next] != 0.0) { destinations[s][a][i] = next; probabilities[s][a][i++] = row[next]; }
+            }
             }
             model.setTransitionFunction(destinations, probabilities);
             long successors = 0;
@@ -98,6 +102,7 @@ public class FiviCheckpointRunner {
             Map<String,Object> row = new LinkedHashMap<>();
             row.put("iteration", iteration); row.put("lower_bound", lower); row.put("upper_bound", upper);
             row.put("value", graph.getExpectedReward()); row.put("java_cpu", cpu());
+            row.put("phase_cpu", snapshot.solver.getPhaseCpu());
             if (graph.getExpectedReward() > snapshot.best) {
                 snapshot.best = graph.getExpectedReward();
                 row.put("graph", Map.of("actions", graph.getLayerNodeActions(), "transitions", graph.getLayerTransitions(), "start_node", graph.getStartNode(), "horizon", graph.getLayerTransitions().size()-1));
@@ -113,7 +118,8 @@ public class FiviCheckpointRunner {
                     JsonObject control = JsonParser.parseString(controls.readLine()).getAsJsonObject();
                     snapshot.charged = control.get("cpu").getAsDouble(); snapshot.chunks = control.get("chunks").getAsInt();
                     snapshot.wall = control.has("wall") ? control.get("wall").getAsDouble() : 0.0;
-                    save(checkpoint, snapshot); last[0] = snapshot.charged;
+                    double saveStart = cpu();
+                    save(checkpoint, snapshot); snapshot.checkpointCpu += cpu()-saveStart; last[0] = snapshot.charged;
                     emit("saved", Map.of("cpu", snapshot.charged, "wall", snapshot.wall, "chunks", snapshot.chunks));
                     if (stopping) throw new CancellationException("interruption");
                 } catch (IOException error) { throw new UncheckedIOException(error); }
@@ -121,8 +127,8 @@ public class FiviCheckpointRunner {
         };
         try {
             state.solver.solve(initialModel, Integer.parseInt(args[7]));
-            emit("done", Map.of("status", "converged"));
-        } catch (CancellationException stopped) { emit("done", Map.of("status", stopped.getMessage())); }
+            emit("done", Map.of("status", "converged", "phase_cpu", snapshot.solver.getPhaseCpu(), "checkpoint_cpu", snapshot.checkpointCpu));
+        } catch (CancellationException stopped) { emit("done", Map.of("status", stopped.getMessage(), "phase_cpu", snapshot.solver.getPhaseCpu(), "checkpoint_cpu", snapshot.checkpointCpu)); }
     }
     static POMDP initialModel;
 }

@@ -17,6 +17,8 @@ public class FiviRunner {
     static final Gson gson = new Gson();
     static class Input {
         double[][][] transition, observation;
+        int[][][] transition_destinations;
+        double[][][] transition_probabilities;
         double[][] reward;
         double[] initial_belief;
         int horizon;
@@ -33,12 +35,15 @@ public class FiviRunner {
         double budget = Double.parseDouble(args[2]);
         int iterations = Integer.parseInt(args[4]);
         Input input = gson.fromJson(new String(Files.readAllBytes(Paths.get(args[0])), StandardCharsets.UTF_8), Input.class);
-        int states = input.initial_belief.length, actions = input.transition.length;
+        int states = input.initial_belief.length, actions = input.observation.length;
         POMDP model = new POMDP(states, actions, input.observation[0][0].length, input.observation, new BeliefPoint(input.initial_belief), input.horizon);
         model.setRewardFunction(input.reward);
         // Sparse successor lists: the solver loops only over listed destinations.
-        int[][][] destinations = new int[states][actions][];
-        double[][][] probabilities = new double[states][actions][];
+        int[][][] destinations = input.transition_destinations;
+        double[][][] probabilities = input.transition_probabilities;
+        if (destinations == null) {
+        destinations = new int[states][actions][];
+        probabilities = new double[states][actions][];
         for (int s=0; s<states; s++) for (int a=0; a<actions; a++) {
             double[] row = input.transition[a][s];
             int count = 0;
@@ -49,6 +54,7 @@ public class FiviRunner {
                 destinations[s][a][i] = next;
                 probabilities[s][a][i++] = row[next];
             }
+        }
         }
         model.setTransitionFunction(destinations, probabilities);
         FiniteVI solver = new FiniteVI(new Random(Long.parseLong(args[3])));
