@@ -22,6 +22,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ForkJoinPool;
+import java.util.function.IntConsumer;
+import java.util.stream.IntStream;
 
 
 import solutions.pomdp.POMDPAgentSolutionPolicyBased;
@@ -47,6 +50,19 @@ public class FiniteVI implements java.io.Serializable {
     public transient Runnable deadlineCheck = () -> {};
     public boolean fixedIterations = false;
     public void setMaxIterations(int count) { maxIter = count; }
+    private transient ForkJoinPool parallelPool;
+    public void setParallelism(int workers) {
+        if (workers < 1) throw new IllegalArgumentException("workers must be positive");
+        if (parallelPool != null) parallelPool.shutdown();
+        parallelPool = workers == 1 ? null : new ForkJoinPool(workers);
+    }
+    private void independentIndices(int count, IntConsumer operation) {
+        if (parallelPool == null) {
+            for (int i=0; i<count; i++) operation.accept(i);
+        } else {
+            parallelPool.submit(() -> IntStream.range(0, count).parallel().forEach(operation)).join();
+        }
+    }
 	private boolean dumpPolicyGraph = false;
 	private Random rnd;
 	
@@ -116,7 +132,7 @@ public class FiniteVI implements java.io.Serializable {
 		
 		AlphaVector[][][] gkao = new AlphaVector[V.size()][nActions][nObservations];
 		
-		for(int k=0; k<V.size(); k++) { deadlineCheck.run();
+		independentIndices(V.size(), k -> { deadlineCheck.run();
 			for(int a=0; a<nActions; a++) { deadlineCheck.run();
 				for(int o=0; o<nObservations; o++) { deadlineCheck.run();
 					double[] entries = new double[nStates];
@@ -142,7 +158,7 @@ public class FiniteVI implements java.io.Serializable {
 					gkao[k][a][o] = av;
 				}
 			}
-		}
+		});
 		
 		return gkao;
 	}
@@ -487,16 +503,15 @@ public class FiniteVI implements java.io.Serializable {
 		if(iter == 0) {
 			ArrayList<AlphaVector> vectorSet = vectorSets.get(t);
 			vectorSet.clear();
-			
-			for(int i=0; i<beliefLists.get(t).size(); i++) { deadlineCheck.run();
-				BeliefPoint b = beliefLists.get(t).get(i);
-				
-				// perform the backup (or take a vector from cache)
-				AlphaVector backupVector = backup(gkao, b);
-				
-				// add vector to the list for this timestep
-				vectorSet.add(backupVector);
-			}
+			// Each first-pass belief backup is independent. Write by index and
+			// append in the original order to preserve ties, RNG and reductions.
+            ArrayList<BeliefPoint> beliefs = beliefLists.get(t);
+            AlphaVector[] backups = new AlphaVector[beliefs.size()];
+            independentIndices(backups.length, i -> {
+                deadlineCheck.run();
+                backups[i] = backup(gkao, beliefs.get(i));
+            });
+            for (AlphaVector vector : backups) vectorSet.add(vector);
 		}
 		else {
 			// perseus-like backup stage

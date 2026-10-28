@@ -19,6 +19,7 @@ public class FiviCheckpointRunner {
         private static final long serialVersionUID = 1L;
         FiniteVI solver;
         double charged, best = -Double.MAX_VALUE;
+        double wall;
         int chunks;
         String identity;
     }
@@ -35,8 +36,11 @@ public class FiviCheckpointRunner {
         Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         try (FileChannel directory = FileChannel.open(path.getParent(), StandardOpenOption.READ)) { directory.force(true); }
     }
-    static double cpu() { return ((com.sun.management.OperatingSystemMXBean)ManagementFactory.getOperatingSystemMXBean()).getProcessCpuTime() * 1e-9; }
+    static final com.sun.management.OperatingSystemMXBean cpuBean = (com.sun.management.OperatingSystemMXBean)ManagementFactory.getOperatingSystemMXBean();
+    static double cpu() { return cpuBean.getProcessCpuTime() * 1e-9; }
+    static volatile boolean expired;
     public static void main(String[] args) throws Exception {
+        final long startNanos = System.nanoTime();
         Path checkpoint = Paths.get(args[1]), request = Paths.get(args[2]);
         String identity = args[3];
         Snapshot state;
@@ -66,15 +70,30 @@ public class FiviCheckpointRunner {
         }
         final Snapshot snapshot = state;
         double restoredCpu = state.charged;
-        emit("restore", Map.of("cpu", state.charged, "chunks", state.chunks, "iteration", state.solver.completedIterations));
+        emit("restore", Map.of("cpu", state.charged, "wall", state.wall, "chunks", state.chunks, "iteration", state.solver.completedIterations));
         JsonObject start = JsonParser.parseString(controls.readLine()).getAsJsonObject();
         double prefix = start.get("prefix_cpu").getAsDouble();
+        double prefixWall = start.has("prefix_wall") ? start.get("prefix_wall").getAsDouble() : 0.0;
+        double restoredWall = state.wall;
+        boolean wallBudget = args.length > 8 && args[8].equals("wall");
         double budget = Double.parseDouble(args[5]);
         int maxIterations = Integer.parseInt(args[6]);
         state.solver.setTerminateTime(Double.POSITIVE_INFINITY);
+        state.solver.setParallelism(Integer.getInteger("fivi.parallelism", 1));
         if (maxIterations > 0) { state.solver.setMaxIterations(maxIterations); state.solver.fixedIterations = true; }
         final double[] last = {state.charged};
-        state.solver.deadlineCheck = () -> { if (restoredCpu + prefix + cpu() >= budget) throw new CancellationException("budget"); };
+        // CPU-clock reads are system calls. Never perform one per vector/observation
+        // inside the numerical loops: a daemon samples the limit instead. The parent
+        // independently enforces the cutoff and validates controller eligibility.
+        Thread budgetMonitor = new Thread(() -> {
+            while (!expired) {
+                double used = wallBudget ? restoredWall + prefixWall + (System.nanoTime()-startNanos)*1e-9 : restoredCpu + prefix + cpu();
+                if (used >= budget) { expired = true; return; }
+                try { Thread.sleep(100); } catch (InterruptedException stop) { return; }
+            }
+        }, "fivi-budget-monitor");
+        budgetMonitor.setDaemon(true); budgetMonitor.start();
+        state.solver.deadlineCheck = () -> { if (expired) throw new CancellationException("budget"); };
         state.solver.progress = (iteration, lower, upper, graph) -> {
             Map<String,Object> row = new LinkedHashMap<>();
             row.put("iteration", iteration); row.put("lower_bound", lower); row.put("upper_bound", upper);
@@ -93,8 +112,9 @@ public class FiviCheckpointRunner {
                     emit("checkpoint", Map.of("java_cpu", cpu(), "iteration", snapshot.solver.completedIterations));
                     JsonObject control = JsonParser.parseString(controls.readLine()).getAsJsonObject();
                     snapshot.charged = control.get("cpu").getAsDouble(); snapshot.chunks = control.get("chunks").getAsInt();
+                    snapshot.wall = control.has("wall") ? control.get("wall").getAsDouble() : 0.0;
                     save(checkpoint, snapshot); last[0] = snapshot.charged;
-                    emit("saved", Map.of("cpu", snapshot.charged, "chunks", snapshot.chunks));
+                    emit("saved", Map.of("cpu", snapshot.charged, "wall", snapshot.wall, "chunks", snapshot.chunks));
                     if (stopping) throw new CancellationException("interruption");
                 } catch (IOException error) { throw new UncheckedIOException(error); }
             }
