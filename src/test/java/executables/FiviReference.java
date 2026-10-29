@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Fixed-iteration reference driver. No solver source changes required.
+// Fixed-iteration reference driver: replays the solver phases through reflection and records the lower bound
+// at the initial belief after each sweep.
 package executables;
 import algorithms.pomdp.cgcp.FiniteVI;
 import com.google.gson.*;
 import model.*;
-import solutions.pomdp.POMDPPolicyGraph;
 import java.nio.file.*;
 import java.util.*;
 import java.lang.reflect.*;
@@ -16,6 +16,11 @@ public class FiviReference {
     }
     static Object call(Object object, String name, Class<?>[] types, Object... values) throws Exception {
         Method method = FiniteVI.class.getDeclaredMethod(name, types); method.setAccessible(true); return method.invoke(object, values);
+    }
+    @SuppressWarnings("unchecked")
+    static ArrayList<ArrayList<AlphaVector>> vectors(FiniteVI solver) throws Exception {
+        Field field = FiniteVI.class.getDeclaredField("vectorSets"); field.setAccessible(true);
+        return (ArrayList<ArrayList<AlphaVector>>) field.get(solver);
     }
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
@@ -50,8 +55,7 @@ public class FiviReference {
                 call(solver,"backupStagePerseus",new Class<?>[]{int.class,int.class},t,i);
                 call(solver,"upperBoundUpdateSkip",new Class<?>[]{int.class,ArrayList.class},t,beliefs.get(t));
             }
-            POMDPPolicyGraph graph=(POMDPPolicyGraph)call(solver,"computePolicyGraph",new Class<?>[]{});
-            result.add(graph.getExpectedReward());
+            result.add(AlphaVector.getValue(model.getInitialBelief().getBelief(), vectors(solver).get(0)));
             if(i+1<iterations) call(solver,"findNewBeliefs",new Class<?>[]{});
         }
         Files.write(Paths.get(args[3]),gson.toJson(result).getBytes("UTF-8"));

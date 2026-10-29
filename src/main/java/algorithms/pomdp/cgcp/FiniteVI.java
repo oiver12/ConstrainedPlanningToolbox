@@ -45,27 +45,23 @@ public class FiniteVI implements java.io.Serializable {
 	private final double gapTolerance = 0.0001; // during search this tolerance is used to decide whether new belief should be added
 	private double terminateTime = 3600; // if runtime exceeds the limit when performing the check, then we stop
 	private int maxIter = 1000000;
-    public interface Progress { void accept(int iteration, double lower, double upper, POMDPPolicyGraph graph); }
+    // Reports the bounds at the initial belief after each backward sweep; no policy graph is built.
+    public interface Progress { void accept(int iteration, double lower, double upper); }
     public transient Progress progress = null;
     public transient Runnable deadlineCheck = () -> {};
     public boolean fixedIterations = false;
-    private double[] phaseCpu = new double[4];
+    private double[] phaseCpu = new double[3];
     private static final boolean profilePhases = Boolean.getBoolean("fivi.profile.phases");
     private static final com.sun.management.OperatingSystemMXBean cpuBean = profilePhases ? (com.sun.management.OperatingSystemMXBean)java.lang.management.ManagementFactory.getOperatingSystemMXBean() : null;
     private static double phaseClock() { return cpuBean.getProcessCpuTime()*1e-9; }
     public java.util.Map<String,Double> getPhaseCpu() {
         if (!profilePhases) return java.util.Collections.emptyMap();
-        return java.util.Map.of("backups", phaseCpu[0], "upper_bounds", phaseCpu[1], "belief_expansion", phaseCpu[2], "graph_extraction_and_evaluation", phaseCpu[3]);
+        return java.util.Map.of("backups", phaseCpu[0], "upper_bounds", phaseCpu[1], "belief_expansion", phaseCpu[2]);
     }
     private void timedPhase(int index, Runnable operation) {
         if (!profilePhases) { operation.run(); return; }
         double before = phaseClock();
         try { operation.run(); } finally { phaseCpu[index] += phaseClock()-before; }
-    }
-    private POMDPPolicyGraph timedGraph() {
-        if (!profilePhases) return computePolicyGraph();
-        double before = phaseClock();
-        try { return computePolicyGraph(); } finally { phaseCpu[3] += phaseClock()-before; }
     }
     public void setMaxIterations(int count) { maxIter = count; }
     private transient ForkJoinPool parallelPool;
@@ -73,7 +69,7 @@ public class FiniteVI implements java.io.Serializable {
         if (workers < 1) throw new IllegalArgumentException("workers must be positive");
         if (parallelPool != null) parallelPool.shutdown();
         parallelPool = workers == 1 ? null : new ForkJoinPool(workers);
-        if (phaseCpu == null) phaseCpu = new double[4];
+        if (phaseCpu == null) phaseCpu = new double[3];
     }
     private void independentIndices(int count, IntConsumer operation) {
         if (parallelPool == null) {
@@ -481,7 +477,7 @@ public class FiniteVI implements java.io.Serializable {
 			assert currentGap >= -0.0001 : "Gap must be positive";
 			lastValueUpperBound = currentUpper;
 			
-			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper, timedGraph());
+			if (progress != null) progress.accept(iter + 1, currentLower, currentUpper);
             // check for convergence of the algorithm
 			iter++;
             completedIterations = iter;
@@ -771,5 +767,24 @@ public class FiniteVI implements java.io.Serializable {
 	
 	public ArrayList<ArrayList<AlphaVector>> getVectorSets() {
 		return vectorSets;
+	}
+	
+	/**
+	 * Number of alpha vectors per stage t=0..T-1; the lower bound uses exactly these vectors.
+	 */
+	public int[] getVectorCounts() {
+		int[] counts = new int[T];
+		for(int t=0; t<T; t++) counts[t] = vectorSets.get(t).size();
+		return counts;
+	}
+	
+	/**
+	 * Alpha vectors of the first stage, from which the lower bound at the initial belief can be recomputed.
+	 */
+	public double[][] getInitialStageVectors() {
+		ArrayList<AlphaVector> vectors = vectorSets.get(0);
+		double[][] entries = new double[vectors.size()][];
+		for(int k=0; k<vectors.size(); k++) entries[k] = vectors.get(k).getEntries();
+		return entries;
 	}
 }
